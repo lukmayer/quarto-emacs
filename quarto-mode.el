@@ -194,7 +194,7 @@ rerender documents.
 
 `quarto-preview` checks parent directories for a `_quarto.yml`
 file.  If one is found, then `quarto-preview` previews that entire
-project, this is \"project mode\"..
+project, this is \"project mode\".
 
 If not, then `quarto-preview` previews the file for the current
 buffer, this is \"file mode\".
@@ -205,32 +205,36 @@ the file system.
 To control whether or not to show the display, customize
 `quarto-preview-display-buffer`."
   (interactive)
-  (when quarto-mode--preview-process
-    (delete-process quarto-mode--preview-process))
-  (when (get-buffer "*quarto-preview*")
-    (kill-buffer "*quarto-preview*"))
-    
-  (let* ((project-directory (quarto-mode--buffer-in-quarto-project-p))
-	 (browser-path (cond
-			(project-directory
-			 (file-relative-name buffer-file-name project-directory))
-			(t "")))
-	 (process
-	  (let ((process-environment (cons (concat "QUARTO_RENDER_TOKEN="
-						   quarto-mode--quarto-preview-uuid)
-					   process-environment)))
-	    (make-process :name (format "quarto-preview-%s" buffer-file-name)
-			  :buffer "*quarto-preview*"
-			  :command (list quarto-command
-					 "preview"
-					 buffer-file-name
-					 "--no-watch-inputs")))))
-    (setq quarto-mode--preview-process process)
-    (with-current-buffer (process-buffer process)
-      (when quarto-preview-display-buffer
-	(display-buffer (current-buffer)))
-      (shell-mode)
-      (set-process-filter process 'quarto-mode--process-filter))))
+  (if (and quarto-mode--preview-process
+           (memq (process-status quarto-mode--preview-process) '(run open)))
+      ;; Refresh existing preview instead of restarting
+      (progn
+        (message "Refreshing existing Quarto preview...")
+        (ignore-errors
+          (quarto-mode--maybe-preview buffer-file-name)))
+    ;; only restart when no process exists or it's not running
+    (when quarto-mode--preview-process
+      (delete-process quarto-mode--preview-process))
+    (when (get-buffer "*quarto-preview*")
+      (kill-buffer "*quarto-preview*"))
+
+    (let* ((project-directory (quarto-mode--buffer-in-quarto-project-p))
+           (process
+            (let ((process-environment (cons (concat "QUARTO_RENDER_TOKEN="
+                                                     quarto-mode--quarto-preview-uuid)
+                                             process-environment)))
+              (make-process :name (format "quarto-preview-%s" buffer-file-name)
+                            :buffer "*quarto-preview*"
+                            :command (list quarto-command
+                                           "preview"
+                                           buffer-file-name
+                                           "--no-watch-inputs")))))
+      (setq quarto-mode--preview-process process)
+      (with-current-buffer (process-buffer process)
+        (when quarto-preview-display-buffer
+          (display-buffer (current-buffer)))
+        (shell-mode)
+        (set-process-filter process 'quarto-mode--process-filter)))))
 
 (easy-menu-define quarto-menu
   (list poly-quarto-mode-map)
@@ -372,6 +376,7 @@ passes ARGS to it."
    (t (apply orig-fun args))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (provide 'quarto-mode)
 
